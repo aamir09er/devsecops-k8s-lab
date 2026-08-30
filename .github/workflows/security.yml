@@ -1,0 +1,48 @@
+name: DevSecOps Security Checks
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  manifest-validation:
+    name: Validate Kubernetes Manifests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate Kubernetes manifests
+        uses: yannh/kubeconform@v1.0.6
+        with:
+          args: >-
+            -summary
+            -ignore-missing-schemas
+            -kubernetes-version 1.36.0
+            k8s
+
+  image-security:
+    name: Trivy Image Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build gates-api image
+        run: docker build -t gates-api:0.1.0 ./app/gates-api
+
+      - name: Scan image for HIGH and CRITICAL vulnerabilities
+        uses: aquasecurity/trivy-action@0.32.0
+        with:
+          image-ref: gates-api:0.1.0
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "0"

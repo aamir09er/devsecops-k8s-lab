@@ -1,0 +1,27 @@
+# Intentionally violates the lab's Kyverno admission floor.
+# Expected: kubectl apply is rejected (or Pods never become Ready).
+#
+# This file exists so a clone can reproduce STEP 1. It is not a template.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: insecure-app
+  namespace: devsecops-lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: insecure-app
+  template:
+    metadata:
+      labels:
+        app: insecure-app
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:latest
+          ports:
+            - containerPort: 80
+          securityContext:
+            privileged: true
+            runAsNonRoot: false

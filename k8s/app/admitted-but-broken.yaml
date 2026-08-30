@@ -1,0 +1,41 @@
+# Passes the lab Kyverno policies, then CrashLoops.
+#
+# Kyverno only enforces: no :latest, not privileged, runAsNonRoot, resource limits.
+# This workload satisfies those, then sets readOnlyRootFilesystem without writable
+# paths. nginx cannot write /var/cache/nginx or /var/run.
+#
+# Expected: Deployment is admitted; Pods are not Ready.
+# Fix: add emptyDir mounts for those paths (nginx lesson).
+# secure-app.yaml is gates-api and does not need those volumes.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admitted-but-broken
+  namespace: devsecops-lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: admitted-but-broken
+  template:
+    metadata:
+      labels:
+        app: admitted-but-broken
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.29
+          ports:
+            - containerPort: 80
+          securityContext:
+            privileged: false
+            runAsNonRoot: true
+            runAsUser: 101
+            readOnlyRootFilesystem: true
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
