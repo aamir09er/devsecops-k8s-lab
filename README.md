@@ -1,6 +1,24 @@
 # Kubernetes Security Gates Lab
 
+[![DevSecOps Security Checks](https://github.com/aamir09er/devsecops-k8s-lab/actions/workflows/security.yml/badge.svg)](https://github.com/aamir09er/devsecops-k8s-lab/actions/workflows/security.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Trivy: 0 HIGH/CRITICAL](https://img.shields.io/badge/Trivy-0%20HIGH%2FCRITICAL-brightgreen)
+
+<sub>The Trivy badge is static. It shows the last local scan of `gates-api:0.1.0` (Go 1.27). It is not updated live. To check it yourself, run `make scan`.</sub>
+
 **Prove Kubernetes security gates — and understand what they cannot do.**
+
+## Quick start
+
+Requires Docker, Kind, `kubectl`, and Trivy (for `make scan`).
+
+```bash
+make up && make demo   # Kind cluster "devsecops-lab" + Kyverno v1.19.0, then the 3 experiments
+make scan              # build gates-api and run the fail-closed Trivy scan
+make down              # delete the cluster
+```
+
+All `kubectl` calls in the Makefile use `--context kind-devsecops-lab`, so they never touch another cluster.
 
 This is a local Kind lab. Clone it, apply failing YAML on purpose, and see which layer fails. GitHub Actions only validates, builds, and scans. It does **not** deploy to your cluster.
 
@@ -20,6 +38,47 @@ Pod CrashLoop         = “security broke Kubernetes”
 ```
 
 Those are different layers. This repo makes the difference visible.
+
+---
+
+## How it works
+
+```mermaid
+flowchart LR
+    dev([Developer])
+
+    subgraph CI["GitHub Actions (security.yml)"]
+        kc[kubeconform schema check]
+        build[docker build gates-api] --> trivy[Trivy scan]
+        nodeploy[[no deploy step]]
+    end
+
+    subgraph Kind["Local Kind cluster"]
+        kyv{"Kyverno admission<br/>4 policies"}
+        blocked[insecure-app<br/>blocked]
+        rt["runtime securityContext"]
+        broken[admitted-but-broken<br/>CrashLoopBackOff]
+        ready[gates-api<br/>Ready]
+    end
+
+    dev -->|git push / PR| kc
+    dev -->|git push / PR| build
+    dev -->|kubectl apply| kyv
+    kyv -->|deny| blocked
+    kyv -->|allow| rt
+    rt --> broken
+    rt --> ready
+```
+
+### Components
+
+| Path | What it is |
+| --- | --- |
+| `k8s/policies/` | Four Kyverno `ClusterPolicy` rules in Enforce mode, scoped to `devsecops-lab`: disallow `:latest`, disallow privileged, require non-root, require resource limits. |
+| `k8s/app/` | Three workloads: `insecure-app` (denied at admission), `admitted-but-broken` (allowed, then crashes under a read-only root), `secure-app` (gates-api + Service, Ready). |
+| `app/gates-api/` | Go HTTP API with `/`, `/health`, `/ready`. Multi-stage build onto distroless `static-debian12:nonroot` (UID 65532). |
+| `scripts/scan-image.sh` | Trivy image scan, `HIGH,CRITICAL`, `--exit-code 1`. Fail-closed. |
+| `.github/workflows/security.yml` | kubeconform + build + Trivy. Report-only (`exit-code: 0`). It has no deploy step. |
 
 ---
 
@@ -212,6 +271,7 @@ k8s/
   security/
 scripts/scan-image.sh           # default image: gates-api:0.1.0
 .github/workflows/security.yml
+Makefile                        # up / demo / scan / down
 LICENSE                         # MIT
 ```
 
